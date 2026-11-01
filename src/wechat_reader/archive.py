@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS versions(
  FOREIGN KEY(message_id) REFERENCES messages(id));
 CREATE INDEX IF NOT EXISTS version_message ON versions(message_id,seq);
 CREATE INDEX IF NOT EXISTS version_query ON versions(account,chat,ts,message_id);
+CREATE INDEX IF NOT EXISTS message_server ON messages(account,chat,server_id);
 CREATE TABLE IF NOT EXISTS sync_state(
  account TEXT NOT NULL, source TEXT NOT NULL, cursor TEXT,
  attempted REAL, succeeded REAL, error TEXT, PRIMARY KEY(account,source));
@@ -47,6 +48,9 @@ CREATE TABLE IF NOT EXISTS sessions(
 CREATE TABLE IF NOT EXISTS readers(
  account TEXT NOT NULL,reader TEXT NOT NULL,seq INTEGER NOT NULL,
  PRIMARY KEY(account,reader));
+CREATE TABLE IF NOT EXISTS recall_targets(
+ account TEXT NOT NULL,chat TEXT NOT NULL,server_id TEXT NOT NULL,event_ts INTEGER NOT NULL,
+ PRIMARY KEY(account,chat,server_id));
 PRAGMA user_version=1;
 """
 
@@ -90,19 +94,25 @@ class Archive:
         result = {"inserted": 0, "updated": 0, "unchanged": 0}
         try:
             with self.db:
+                initial_mark = self.watermark()
                 for n, item in enumerate(batch.get("messages", [])):
                     if fail_after is not None and n == fail_after:
                         raise RuntimeError("controlled_batch_interruption")
                     m = self.normalize(item, account, source)
                     identity = tuple(m[k] for k in ("account", "shard", "chat", "local_id"))
                     old = self.db.execute("SELECT * FROM messages WHERE account=? AND shard=? AND chat=? AND local_id=?", identity).fetchone()
+                    pending_recall = self.db.execute("SELECT event_ts FROM recall_targets WHERE account=? AND chat=? AND server_id=?", (account, m["chat"], m["server_id"])).fetchone() if m["server_id"] else None
+                    if pending_recall and not old and m["kind"] != "recall":
+                        m.update(kind="recall", text="[消息已撤回，原文未采集]", extra={"captured_original": False}, recalled=True)
                     if old and (old["recalled"] or m["recalled"]):
                         m["recalled"] = True
                         if old["kind"] != "recall":
                             # Preserve only text actually captured before the source rewrite.
                             m.update(kind=old["kind"], text=old["text"], extra=json.loads(old["extra"]))
-                        elif not m["text"]:
-                            m["text"] = old["text"]
+                        else:
+                            # A stale source snapshot cannot turn an already unknown
+                            # recall into a claim that we captured its original text.
+                            m.update(kind=old["kind"], text=old["text"], extra=json.loads(old["extra"]))
                     digest = hashlib.sha256(dumps(m).encode()).hexdigest()
                     if old and old["digest"] == digest:
                         result["unchanged"] += 1
@@ -119,14 +129,23 @@ class Archive:
                     payload = dict(m, id=mid)
                     seq = self.db.execute("INSERT INTO versions(message_id,account,chat,ts,sender,kind,text,payload) VALUES(?,?,?,?,?,?,?,?)", (mid, account, m["chat"], m["ts"], m["sender"], m["kind"], m["text"], dumps(payload))).lastrowid
                     self.db.execute("UPDATE messages SET first_seq=coalesce(first_seq,?),last_seq=? WHERE id=?", (seq, seq, mid))
+                    target = m["extra"].get("target_server_id") if m["kind"] == "recall" else None
+                    if target:
+                        target_chat = m["extra"].get("target_chat") or m["chat"]
+                        self.db.execute("INSERT OR IGNORE INTO recall_targets VALUES(?,?,?,?)", (account, target_chat, str(target), m["ts"]))
+                        self._recall_targets(account, target_chat, str(target), m["ts"], mid, initial_mark)
                 for c in batch.get("contacts", []):
                     self.db.execute("INSERT OR REPLACE INTO contacts VALUES(?,?,?,?,?,?)", (account, str(c["user"]), c.get("remark", ""), c.get("nick", ""), c.get("alias", ""), c.get("kind", "other")))
                 # Explicit complete room list also clears rooms whose membership became empty.
+                if batch.get("members_complete"):
+                    self.db.execute("DELETE FROM members WHERE account=?", (account,))
                 rooms = set(batch.get("member_rooms", [])) | {m["room"] for m in batch.get("members", [])}
                 for room in rooms:
                     self.db.execute("DELETE FROM members WHERE account=? AND room=?", (account, room))
                 for m in batch.get("members", []):
                     self.db.execute("INSERT OR REPLACE INTO members VALUES(?,?,?,?)", (account, m["room"], m["user"], m.get("nick", "")))
+                if batch.get("sessions_complete"):
+                    self.db.execute("DELETE FROM sessions WHERE account=?", (account,))
                 for s in batch.get("sessions", []):
                     self.db.execute("INSERT OR REPLACE INTO sessions VALUES(?,?,?,?,?)", (account, s["chat"], int(s.get("unread", 0)), int(s.get("last_ts", 0)), s.get("summary", "")))
                 now = time.time()
@@ -138,6 +157,23 @@ class Archive:
             self.failure(account, source, type(exc).__name__)
             raise
         return result
+
+    def _recall_targets(self, account, chat, server_id, event_ts, event_id, initial_mark):
+        rows = self.db.execute("SELECT * FROM messages WHERE account=? AND chat=? AND server_id=? AND id!=? AND recalled=0", (account, chat, server_id, event_id)).fetchall()
+        for row in rows:
+            m = self.normalize(dict(row, extra=json.loads(row["extra"])), account, row["shard"])
+            m["recalled"] = True
+            if row["first_seq"] > initial_mark:
+                m.update(kind="recall", text="[消息已撤回，原文未采集]", extra={"captured_original": False})
+                # These uncommitted versions were first collected with the recall
+                # event. No reader has seen them; do not retain a false original.
+                self.db.execute("UPDATE versions SET kind=?,text=?,payload=? WHERE message_id=? AND seq>?", (m["kind"], m["text"], dumps(dict(m, id=row["id"])), row["id"], initial_mark))
+            else:
+                m["extra"]["recall_event_ts"] = event_ts
+            digest = hashlib.sha256(dumps(m).encode()).hexdigest()
+            self.db.execute("UPDATE messages SET kind=?,text=?,extra=?,recalled=1,digest=? WHERE id=?", (m["kind"], m["text"], dumps(m["extra"]), digest, row["id"]))
+            seq = self.db.execute("INSERT INTO versions(message_id,account,chat,ts,sender,kind,text,payload) VALUES(?,?,?,?,?,?,?,?)", (row["id"], account, chat, m["ts"], m["sender"], m["kind"], m["text"], dumps(dict(m, id=row["id"])))).lastrowid
+            self.db.execute("UPDATE messages SET last_seq=? WHERE id=?", (seq, row["id"]))
 
     @staticmethod
     def normalize(item, account, source):
@@ -221,6 +257,8 @@ class Archive:
         return [dict(r) for r in self.db.execute("SELECT * FROM contacts WHERE (? IS NULL OR account=?) AND (instr(lower(user),lower(?)) OR instr(lower(remark),lower(?)) OR instr(lower(nick),lower(?)) OR instr(lower(alias),lower(?))) ORDER BY account,user", (account, account, term, term, term, term))]
 
     def resolve(self, account, name):
+        if self.db.execute("SELECT 1 FROM contacts WHERE account=? AND user=?", (account, name)).fetchone():
+            return name
         rows = self.db.execute("SELECT user FROM contacts WHERE account=? AND (user=? OR remark=? OR nick=? OR alias=?)", (account, name, name, name, name)).fetchall()
         if len(rows) > 1:
             raise ValueError("ambiguous_contact_use_exact_user_id")
@@ -252,6 +290,9 @@ class Archive:
                 "versions": self.watermark(), "contacts": self.db.execute("SELECT count(*) FROM contacts").fetchone()[0],
                 "members": self.db.execute("SELECT count(*) FROM members").fetchone()[0],
                 "sync": [dict(r) for r in self.db.execute("SELECT * FROM sync_state ORDER BY account,source")]}
+
+    def cursors(self, account):
+        return {r["source"]: r["cursor"] for r in self.db.execute("SELECT source,cursor FROM sync_state WHERE account=? AND error IS NULL AND source!='__sync__'", (account,))}
 
     def doctor(self, *, max_age=None):
         check = self.db.execute("PRAGMA quick_check").fetchone()[0]

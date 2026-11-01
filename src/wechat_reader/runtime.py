@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -65,17 +66,15 @@ def lock(name):
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def sync_once(archive, source):
+def sync_once(archive, source, *, full=False):
     totals = dict(inserted=0, updated=0, unchanged=0, batches=0)
     try:
         with lock("sync"):
-            for batch in source.scan():
+            for batch in source.scan(cursors=None if full else archive.cursors(source.account)):
                 r = archive.ingest(batch)
                 for key in r:
                     totals[key] += r[key]
                 totals["batches"] += 1
-            if not totals["batches"]:
-                raise ValueError("source_produced_no_batches")
             archive.ingest(dict(account=source.account, source="__sync__", cursor=str(time.time())))
     except Exception as exc:
         archive.failure(source.account, "__sync__", type(exc).__name__)
@@ -88,7 +87,9 @@ def daemon_state():
     if not path.exists():
         return {"running": False}
     state = json.loads(path.read_text(encoding="utf-8"))
-    state["running"] = bool(state.get("running") and time.time()-state.get("heartbeat", 0) < max(90, state.get("interval", 20)*3))
+    pulse = DATA / "daemon.heartbeat"
+    last_seen = pulse.stat().st_mtime if pulse.exists() else state.get("heartbeat", 0)
+    state["running"] = bool(state.get("running") and time.time()-last_seen < 15)
     return state
 
 
@@ -120,6 +121,16 @@ def run_daemon(db_path, interval):
         state = dict(running=True, pid=os.getpid(), interval=interval, heartbeat=time.time())
         write_json(DATA / "daemon.json", state)
         stop = DATA / "daemon.stop"
+        finished = threading.Event()
+
+        def heartbeat():
+            # Separate heartbeat file avoids racing the main state-file writer.
+            while not finished.wait(2):
+                (DATA / "daemon.heartbeat").touch()
+
+        (DATA / "daemon.heartbeat").touch()
+        thread = threading.Thread(target=heartbeat, daemon=True)
+        thread.start()
         try:
             while not stop.exists():
                 state.update(heartbeat=time.time(), syncing=True)
@@ -138,6 +149,8 @@ def run_daemon(db_path, interval):
                 while not stop.exists() and time.monotonic() < deadline:
                     time.sleep(.2)
         finally:
+            finished.set()
+            thread.join(timeout=3)
             state.update(running=False, heartbeat=time.time())
             write_json(DATA / "daemon.json", state)
             if stop.exists():

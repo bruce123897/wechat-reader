@@ -48,6 +48,33 @@ class ArchiveTests(unittest.TestCase):
         recalled["local_id"] = 2
         self.a.ingest(batch([recalled]))
         self.assertEqual(self.a.message(2)["text"], "已撤回")
+        # A stale later source cannot replace an initially unknown recall.
+        stale = msg(2); stale["text"] = "not captured before recall"
+        self.a.ingest(batch([stale]))
+        self.assertEqual(self.a.message(2)["text"], "已撤回")
+
+    def test_separate_recall_event_targets_only_its_account_and_chat(self):
+        original = msg(server_id="99")
+        self.a.ingest(batch([original]))
+        self.a.ingest(batch([original], account="b"))
+        event = msg(2, 101); event.update(kind="recall", text="已撤回", recalled=True, extra={"target_server_id": "99", "target_chat": "room"})
+        self.a.ingest(batch([event]))
+        self.assertTrue(self.a.message(1)["recalled"])
+        self.assertEqual(self.a.message(1)["text"], original["text"])
+        self.assertFalse(self.a.message(2)["recalled"])
+        self.assertEqual(self.a.new("a")["messages"][-1]["id"], 1)
+        # Event observed before original content: never claim to recover it later.
+        late = msg(3, server_id="100")
+        event["local_id"] = 4; event["extra"]["target_server_id"] = "100"
+        self.a.ingest(batch([event]))
+        self.a.ingest(batch([late]))
+        latest = self.a.query(keyword="原文未采集")["messages"]
+        self.assertEqual(len(latest), 1)
+        self.assertTrue(latest[0]["recalled"])
+
+    def test_precise_user_id_wins_over_another_nickname(self):
+        self.a.ingest(batch(contacts=[dict(user="u",nick="same"),dict(user="v",nick="u")]))
+        self.assertEqual(self.a.resolve("a", "u"), "u")
 
     def test_stable_pagination_across_insert_and_update(self):
         self.a.ingest(batch([msg(i, 100+i//2) for i in range(8)]))

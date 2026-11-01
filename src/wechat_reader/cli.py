@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import io
 import json
 import sys
@@ -57,7 +58,7 @@ def parser():
     sub.add_parser("discover")
     cfg = sub.add_parser("configure"); cfg.add_argument("--source", type=Path, required=True); cfg.add_argument("--key-file", type=Path)
     sub.add_parser("probe")
-    sub.add_parser("sync")
+    sync = sub.add_parser("sync"); sync.add_argument("--full", action="store_true", help="重读所有分片并重解析，仍幂等去重")
     daemon = sub.add_parser("daemon"); daemon.add_argument("action", choices=["start", "stop", "status", "run"]); daemon.add_argument("--interval", type=float, default=20)
     media = sub.add_parser("media"); media.add_argument("id", type=int); media.add_argument("--copy", action="store_true")
     voice = sub.add_parser("voice"); voice.add_argument("action", choices=["enqueue", "run", "status", "retry"]); voice.add_argument("--id", type=int); voice.add_argument("--model", type=Path)
@@ -110,7 +111,18 @@ def execute(args):
     if cmd == "configure":
         from .source import Source
         source = Source(args.source, args.key_file)
-        cfg = dict(source=str(args.source.resolve()), account=source.account, key_file=str(args.key_file.resolve()) if args.key_file else None)
+        # Verify a small source database before persisting a configuration.
+        from .source import capture
+        raw, wal, _ = capture(source.storage / "contact/contact.db")
+        connection = source._open(raw, wal)
+        connection.close()
+        key_file = None
+        if source.key_file.exists():
+            key_file = runtime.DATA / "keys" / (source.account + ".bin")
+            key_file = runtime.output_path(key_file)
+            key_file.parent.mkdir(parents=True, exist_ok=True)
+            key_file.write_bytes(source.key_file.read_bytes())
+        cfg = dict(source=str(args.source.resolve()), account=source.account, key_file=str(key_file) if key_file else None)
         runtime.write_json(runtime.DATA / "config.json", cfg)
         return {"configured": True, "account_count": 1}
     if cmd == "probe":
@@ -166,7 +178,7 @@ def execute(args):
             return result
         if cmd == "sync":
             try:
-                return runtime.sync_once(archive, source_from_config())
+                return runtime.sync_once(archive, source_from_config(), full=args.full)
             except Exception as exc:
                 cfg = runtime.config()
                 archive.failure(cfg.get("account", "configured"), "__sync__", type(exc).__name__)
@@ -177,15 +189,60 @@ def execute(args):
 
 
 def media_voice(archive, args):
-    raise ValueError("media_voice_integration_pending")
+    from .media import MediaResolver
+    from .voice import FasterWhisperTranscriber, VoiceQueue
+    queue = VoiceQueue(archive.path.with_name(archive.path.stem + ".voices.db")) if args.command == "voice" else None
+    if args.command == "voice" and args.action == "status":
+        return {"jobs": queue.status(), "job": queue.get(args.id) if args.id else None}
+    if args.command == "voice" and args.action == "retry":
+        return {"retried": queue.retry(args.id)}
+    if args.command == "voice" and args.action == "run":
+        transcriber = FasterWhisperTranscriber(args.model, cache_dir=runtime.DATA / "audio-cache")
+        return {"job": queue.run_once(transcriber)}
+    if args.id is None:
+        raise ValueError("message_id_required")
+    message = archive.message(args.id)
+    cfg = runtime.config()
+    if message["account"] != cfg["account"]:
+        raise ValueError("configure_source_for_message_account_first")
+    keys = {}
+    if cfg.get("key_file"):
+        from .keys import load_keys
+        keys = load_keys(Path(cfg["key_file"]))
+    resolver = MediaResolver(Path(cfg["source"]), runtime.DATA / "media-cache",
+                             image_key=keys.get("img_aes"), image_xor=keys.get("img_xor"))
+    if args.command == "media":
+        result = resolver.resolve(message)
+        if args.copy and result["state"] == "available":
+            result, content = resolver.read(message)
+            if content is not None:
+                target = runtime.DATA / "media-cache" / (hashlib.sha256(content).hexdigest()+Path(result["path"]).suffix)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(content)
+                result.update(path=str(target), detail="copied_to_own_cache")
+        return result
+    if message["kind"] != "voice":
+        raise ValueError("message_is_not_voice")
+    result = resolver.resolve(message)
+    path = result.get("path") if result["state"] == "available" else None
+    if path is None and message["server_id"] not in ("", "0"):
+        audio = source_from_config().read_voice(message["server_id"], message["chat"])
+        if audio:
+            target = runtime.DATA / "voice-cache" / (hashlib.sha256(audio).hexdigest()+".silk")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(audio)
+            path = target
+    return {"job": queue.enqueue(message["id"], path)}
 
 
 def main(argv=None):
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     args = parser().parse_args(argv)
     try:
         result = execute(args)
         code = 2 if isinstance(result, dict) and result.get("ok") is False else 0
-    except (OSError, ValueError, RuntimeError, ImportError, KeyError) as exc:
+    except Exception as exc:
         # Raw exception strings may include private SQL, content, paths or key bytes.
         result, code = {"ok": False, "error": type(exc).__name__, "detail": "operation_failed_check_configuration_and_doctor"}, 2
     json.dump(result, sys.stdout, ensure_ascii=False, indent=2)

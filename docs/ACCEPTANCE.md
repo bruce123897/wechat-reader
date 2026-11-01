@@ -44,3 +44,7 @@
 首次同步后原样重复：inserted=0、updated=0、batches=0（指纹一致跳过）。真实归档分页前两页各2条且不重叠，上下文返回3条；会话与联系人统计见上。
 
 受控 OSError 仅注入本项目同步入口，没有改源：doctor.ok=false、sync_errors=1；恢复真实源同步后 doctor.ok=true、sync_errors=0、dangling_versions=0。原始脱敏 JSON 在 data/local-acceptance.json；脚本可复现，运行资料不入 Git。
+
+新增独立撤回事件关联（同账号/会话/server_id），只保留此前已采集正文；先观察到撤回后再出现的陈旧源正文不得冒充恢复。精确 user 优先于名称匹配。所有变化分片全量重扫，能发现很早的原地更新；没有只看最近两小时的漏检窗口。每个变化分片是独立事务，批次中断后已提交分片保留、未提交分片重跑。`sync --full` 重解析全部源而不重复插入。
+
+实际全量重读：inserted=0、updated=0、unchanged=215513、batches=4；doctor.ok=true。新增 CLI/同步测试验证错误退出码2、JSON导出、数据输出目录限制、单实例锁、部分分片成功后失败续跑与一次完整同步相同。统一测试此时为 37 项通过。
