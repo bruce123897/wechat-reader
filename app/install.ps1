@@ -1,4 +1,4 @@
-﻿# WeChat for AI 一键安装（Windows）。开发者 Jayden（小林），微信 LinlinlinJiaQ。
+﻿# WeChat for AI 一键安装（Windows）。维护者 Bruce，微信 bruce_jaychou。
 # 推荐：双击本文件夹里的「安装.bat」（出错也不会闪退，窗口会停住给你看结果）。
 # 或在 PowerShell 里：powershell -ExecutionPolicy Bypass -File install.ps1
 # 做的事：建独立 Python 环境 → 装依赖 →（可选）语音模型 → 装 wx 命令 → 取密钥（扫码/登录捕获）→ 首次同步 → 开机自启 → 自检
@@ -14,10 +14,10 @@ param(
 # 用 Continue 而不是 Stop：否则 pip/curl 等外部命令往 stderr 写一行（哪怕最后成功）就会被当成致命错误、直接崩掉。
 # 真正该中止的地方，下面都用显式 throw，交给 trap 统一兜底。
 $ErrorActionPreference = "Continue"
-$Contact = "LinlinlinJiaQ"
+$Contact = "bruce_jaychou"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $Here) { $Here = (Get-Location).Path }
-$Data = if ($env:WXKIT_HOME) { $env:WXKIT_HOME } else { Join-Path $HOME ".wxdb" }
+$Data = if ($env:WXKIT_HOME) { $env:WXKIT_HOME } else { Join-Path (Split-Path -Parent $Here) "data\customized" }
 $Venv = Join-Path $Data "venv"
 $Py = Join-Path $Venv "Scripts\python.exe"
 # 语音模型（GitHub release）；下载时按顺序试这些国内加速前缀，最后才直连 GitHub
@@ -34,13 +34,13 @@ function Hold { if ($Pause) { Write-Host ""; Read-Host "按回车键关闭本窗
 # 顶层兜底：任何没接住的错误都在这里打印清楚，而不是让窗口一闪而过
 trap {
     Write-Host "`n安装过程中出错：$_" -ForegroundColor Red
-    Write-Host "把这个窗口整个截图发给开发者 Jayden（小林），微信 $Contact，一般都能很快解决。" -ForegroundColor Yellow
+    Write-Host "把这个窗口整个截图发给维护者 Bruce，微信 $Contact，一般都能很快解决。" -ForegroundColor Yellow
     Hold
     exit 1
 }
 
 Write-Host "`nWeChat for AI —— 让 AI 直接读电脑上的微信聊天记录" -ForegroundColor Green
-Write-Host "开发者 Jayden（小林） ｜ 微信 $Contact"
+Write-Host "维护者 Bruce ｜ 微信 $Contact"
 New-Item -ItemType Directory -Force $Data | Out-Null
 
 # 根因修复（v2.3.0）：绝不从临时目录注册后台/命令，否则它们会指向随时被系统清理的 Temp 路径。
@@ -193,6 +193,6 @@ Wx doctor
 
 Write-Host "`n✅ WeChat for AI 安装完成" -ForegroundColor Green
 Write-Host "试试：wx new   /   wx find 某人   /   wx read 某人；或者直接让 AI 帮你查微信"
-Write-Host "`n开发者 Jayden（小林） ｜ 微信 $Contact" -ForegroundColor Cyan
+Write-Host "`n维护者 Bruce ｜ 微信 $Contact" -ForegroundColor Cyan
 Write-Host "装不上、用不了、想要新功能，或者想聊聊怎么让 AI 帮你处理微信和生意，都可以加我"
 Hold

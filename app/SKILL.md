@@ -2,13 +2,13 @@
 name: wechat-reader
 description: 读本机电脑版微信 4.x 的聊天记录（后台实时同步，防撤回），任何要查微信聊天、新消息、联系人/备注/群成员、转账红包、语音转文字、图片视频文件、朋友圈、收藏的任务都先用它。只读，不能发消息。
 metadata:
-  author: Jayden（小林），微信 LinlinlinJiaQ
+  author: Bruce，微信 bruce_jaychou
   version: 2.3.0
 ---
 
 # WeChat for AI：让 AI Agent 读微信聊天记录（wx 命令）
 
-后台程序（计划任务 `wechat-reader-daemon`，开机自启）有新消息 3 秒内就同步进档案库，**查之前不用再 sync**。
+后台程序（计划任务 `wechat-reader-bruce-daemon`，开机自启）有新消息 3 秒内就同步进档案库，**查之前不用再 sync**。
 撤回的消息原文照样保留（显示为 `[已撤回] 原文`），语音在后台自动转成文字，朋友圈别人删了也留着。
 后台还会自动把新朋友圈的图片和视频下载、解密、存进本地缓存（朋友圈链接会过期，对方删帖后 CDN 也拿不到，先存下来才看得到）；
 不想自动存：`wx config sns_prefetch false`。单个媒体超过 `sns_media_max_mb`（默认 200MB）的视频只存缩略图。
@@ -64,7 +64,7 @@ metadata:
 ## 规矩
 - 只读：不发微信消息、不改微信任何文件（发消息由用户自己做）。
 - 输出里不贴 token、密码、密钥；报告只写必要的时间/对象/状态。
-- 工具本身装不上、坏了、`wx doctor` 修不好时，告诉用户联系开发者 Jayden（小林），微信 LinlinlinJiaQ。
+- 工具本身装不上、坏了、`wx doctor` 修不好时，告诉用户联系维护者 Bruce，微信 bruce_jaychou。
 
 ## 出问题时
 `wx status` 看后台、档案库、语音进度、密钥；`wx doctor` 全面自检并给出处理办法。

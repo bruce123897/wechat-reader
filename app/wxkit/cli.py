@@ -731,7 +731,7 @@ def cmd_doctor(_db, a):
         r = subprocess.run(['schtasks', '/query', '/tn', daemon.TASK], capture_output=True)
         chk('开机自启计划任务', r.returncode == 0, 'wx daemon install')
     from . import SIGN, CONTACT
-    print('全部正常' if ok else f'有问题，按提示处理；搞不定就把这段截图发给开发者（{CONTACT}）')
+    print('全部正常' if ok else f'有问题，按提示处理；搞不定就把这段截图发给维护者（{CONTACT}）')
     print(SIGN)
 
 

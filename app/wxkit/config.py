@@ -14,7 +14,7 @@ import re
 import sys
 
 HOME = os.path.expanduser('~')
-DATA = os.environ.get('WXKIT_HOME') or os.path.join(HOME, '.wxdb')
+DATA = os.environ.get('WXKIT_HOME') or os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'customized'))
 CFG_FILE = os.path.join(DATA, 'config.json')
 TZ_HOURS = 8  # 时间一律按北京时间显示
 

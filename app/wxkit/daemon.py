@@ -263,7 +263,7 @@ class Daemon:
 
 
 # ---------- 开机自启（Windows 计划任务） ----------
-TASK = 'wechat-reader-daemon'
+TASK = 'wechat-reader-bruce-daemon'
 OLD_TASKS = ('wxkit-daemon',)
 
 
@@ -282,8 +282,8 @@ $a = New-ScheduledTaskAction -Execute '{exe}' -Argument '"{_entry()}" daemon run
 $t1 = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $t2 = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)
 $s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -Priority 7
-$k = New-ScheduledTask -Action $a -Trigger $t1,$t2 -Settings $s -Description 'WeChat for AI 后台同步：把微信新消息实时整理进本地档案库（只读）。开发者 Jayden（小林），微信 LinlinlinJiaQ'
-$k.Author = 'Jayden（小林）'
+$k = New-ScheduledTask -Action $a -Trigger $t1,$t2 -Settings $s -Description 'WeChat for AI 后台同步：把微信新消息实时整理进本地档案库（只读）。维护者 Bruce，微信 bruce_jaychou'
+$k.Author = 'Bruce'
 Register-ScheduledTask -TaskName '{TASK}' -InputObject $k -Force | Out-Null
 Start-ScheduledTask -TaskName '{TASK}'
 '''

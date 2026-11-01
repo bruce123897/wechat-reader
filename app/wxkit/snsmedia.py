@@ -160,7 +160,7 @@ def parse_media(content_xml):
 
 # ---------- 下载 ----------
 # 朋友圈视频 CDN（video.qq.com）会挡掉非微信客户端（返回 400，X-retmsg: sns illegal ua），
-# 必须用微信自己的 User-Agent 才放行。是否开启由开关控制（默认关，交 Jayden 决定）。
+# 必须用微信自己的 User-Agent 才放行。是否开启由开关控制（默认关，由维护者决定）。
 _WX_UA = 'MicroMessenger Client'
 
 

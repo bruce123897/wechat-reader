@@ -18,10 +18,10 @@
   cli       wx 命令入口
 """
 __version__ = '2.3.0'
-__author__ = 'Jayden（小林）'
+__author__ = 'Bruce'
 
 NAME = 'WeChat for AI'
-CONTACT = '微信 LinlinlinJiaQ'
-SIGN = f'{NAME} v{__version__} · 开发者 {__author__} · {CONTACT}'
+CONTACT = '微信 bruce_jaychou'
+SIGN = f'{NAME} v{__version__} · 维护者 {__author__} · {CONTACT}'
 PITCH = '装不上、用不了、想要新功能，或者想聊聊怎么让 AI 帮你处理微信和生意，都可以加我'
 
