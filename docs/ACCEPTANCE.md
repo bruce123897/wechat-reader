@@ -70,6 +70,8 @@
 
 媒体角色复核：全部474条视频消息中122条为文件头验证过的MP4本体，307条仅JPEG封面，13条歧义、32条缺失；最近20条全部仅封面。结果新增requested_kind/media_kind/format/source_media_missing字段，视频封面强制variant=thumbnail且source_media_missing=true，原图身份不明确时标unclassified。已读一个1697892字节视频的头部确认ftyp偏移4；不能把缩略图计入视频本体成功数。
 
+最终 `local_media_acceptance.py` 已用上述角色逻辑完整运行：图片最近20条也均为可用缩略图，不能算原图；474条视频统计与上文一致，并通过MediaResolver.read完整读取1697892字节MP4本体；348条文件统计一致，完整读取281520字节文件样本；真实语音仍done（11字符）。历史DAT解密抽样与“最近20条仅缩略图”是不同样本口径。
+
 ## 最终复验
 
 统一入口 `scripts/acceptance.py`：**51项通过**。最终增加媒体角色、同批首次观察撤回不保留伪原文、并发语音缓存、源指纹相同仍须验证当前密钥的回归。并发缓存测试确实暴露了Windows替换已有打开文件的PermissionError；改为临时完整文件硬链接发布不可变内容、已存在时核验哈希后通过，没有删除断言或跳过测试。
