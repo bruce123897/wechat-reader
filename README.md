@@ -1,14 +1,14 @@
 # ChatArchive
 
-本地聊天归档与 AI 检索工具，提供消息归档、上下文检索和带原文引用的 AI 问答。
+本地微信聊天记录读取与归档工具，围绕后台同步、消息解析、会话查询和上下文检索构建完整使用流程。
 
 当前处于开发起点，尚未接入真实微信数据。开发演示使用合成消息，不代表真实聊天或实际巡检结果。
 
-目标流程：数据源 → 统一消息模型 → 增量归档 → 检索与上下文 → 网页 / CLI / MCP → 带原文引用的回答。
+目标流程：微信数据源 → 消息解析与增量归档 → 会话与上下文检索 → CLI / Skill 调用。
 
-计划技术栈：Python、SQLite、FastAPI、React、TypeScript、MCP。按里程碑逐步引入，先交付可验证的数据核心。
+先以 Python、SQLite 完成主要功能；网页、MCP 和带引用问答作为后续扩展。
 
-项目路线见 [ROADMAP](docs/ROADMAP.md)，技术取舍见 [DECISIONS](docs/DECISIONS.md)。
+功能范围见 [SCOPE](docs/SCOPE.md)，项目路线见 [ROADMAP](docs/ROADMAP.md)，技术取舍见 [DECISIONS](docs/DECISIONS.md)。仓库保持私有。
 
 代码、文档、修复通过真实 Git 提交持续保存。私人聊天、数据库、密钥和运行日志不纳入仓库。
 
