@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wechat-reader"
+version = "0.1.0"
+description = "Local read-only WeChat archive, sync and query"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+wechat = ["cryptography==46.0.3", "zstandard==0.25.0"]
+voice = ["faster-whisper==1.2.1"]
+
+[project.scripts]
+wechat-reader = "wechat_reader.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
