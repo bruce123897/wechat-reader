@@ -8,7 +8,7 @@ import re
 import sqlite3
 import time
 
-from .crypto import MAGIC, SourceIntegrityError, decrypt_database
+from .crypto import MAGIC, PAGE, Cipher, SourceIntegrityError, decrypt_database
 from .keys import database_key
 
 
@@ -139,6 +139,34 @@ class Source:
             raise SourceFormatError("No supported message shards were found")
         return paths
 
+    def validate(self) -> dict:
+        """Check current source availability and key even when every cursor matches.
+
+        Authentication reads one contact page, avoiding a redundant full decrypt.
+        Cached key material is discarded first so a removed or changed key file
+        cannot be hidden by a long-running daemon's previous successful scan.
+        """
+        self._key = None
+        paths = self._paths()
+        for path in paths:
+            if not path.is_file():
+                raise SourceFormatError("Required source database is missing")
+            size = path.stat().st_size
+            if size < PAGE or size % PAGE:
+                raise SourceIntegrityError("Source database length is not aligned to 4096-byte pages")
+        with paths[0].open("rb") as handle:
+            page = handle.read(PAGE)
+        if len(page) != PAGE:
+            raise SourceIntegrityError("Contact source page is incomplete")
+        encrypted = not page.startswith(MAGIC)
+        if encrypted:
+            current = database_key(self.key_file)
+            Cipher(current, page[:16]).decrypt_page(page, 1)
+            self._key = current
+        elif int.from_bytes(page[16:18], "big") != PAGE:
+            raise SourceIntegrityError("Only 4096-byte source pages are supported")
+        return {"ok": True, "databases": len(paths), "encrypted": encrypted, "page_size": PAGE}
+
     def _open(self, database: bytes, wal: bytes):
         if not database.startswith(MAGIC) and self._key is None:
             self._key = database_key(self.key_file)
@@ -214,6 +242,7 @@ class Source:
 
     def scan(self, cursors: dict[str, str] | None = None):
         """Full changed-shard reconciliation discovers even old in-place edits."""
+        self.validate()
         for path in self._paths():
             source = path.relative_to(self.storage).as_posix()
             database, wal, fingerprint = capture(path)

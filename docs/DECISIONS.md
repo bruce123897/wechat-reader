@@ -20,3 +20,11 @@
 
 运行输出只允许本项目 data/，源文件仅二进制只读打开，不在源路径建立 SQLite sidecar。核心使用标准库；真实解密使用 cryptography==46.0.3，压缩正文使用 zstandard==0.25.0，传递版本见 requirements-wechat.lock。Windows DPAPI 密钥文件只读导入，不提交密钥或路径。
 
+## D006：完整变化分片对账与独立语音任务
+
+每轮双遍读取 DB/WAL 验证内容一致，完整扫描变化分片，使用指纹持久游标跳过无变化分片。不只回看近期消息，优先捕获古老原地变化；此实现首次全量较慢，后续页级优化不能牺牲正确性。消息/版本/游标同事务。独立语音库在同步后对账补登记，崩溃间隙下轮修复；worker按需读取语音源，不在文字同步里运行模型。
+
+## D007：经真实样本验证的语音依赖
+
+本地 faster-whisper==1.2.1 + pilk==0.2.4 + av==16.1.0，完整传递依赖锁定 requirements-voice.lock。pilk 使用 pcm_rate=24000；faster-whisper1.2.1 与 av19 的 metadata_errors API 不兼容，已实际遇到并固定到16.1.0，参考[上游缺陷](https://github.com/SYSTRAN/faster-whisper/issues/1589)。模型来自[Systran/faster-whisper-tiny](https://huggingface.co/Systran/faster-whisper-tiny)，本次revision为 d90ca5fe260221311c53c58e660288d3deb8d356，文件sha256保留在data模型manifest。推理只用显式本地路径、CPU/int8，不自动下载，不上传音频。
+

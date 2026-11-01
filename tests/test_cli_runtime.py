@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from wechat_reader.archive import Archive
-from wechat_reader.cli import main
+from wechat_reader.cli import cache_voice, main
 from wechat_reader import runtime
 
 
@@ -89,6 +89,19 @@ class CliRuntimeTests(unittest.TestCase):
             runtime.output_path(runtime.ROOT / "README.md")
         with Archive(self.db) as a:
             self.assertFalse(a.doctor(max_age=120)["ok"])
+
+    def test_concurrent_voice_cache_for_identical_payload(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        class Source:
+            def read_voice(self, *args):
+                return b"synthetic audio" * 10000
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            paths = list(pool.map(lambda _: cache_voice(Source(), {"server_id": "1", "chat": "synthetic"}), range(8)))
+        self.assertEqual(len(set(paths)), 1)
+        self.assertEqual(paths[0].read_bytes(), b"synthetic audio" * 10000)
+        self.assertEqual(list(paths[0].parent.glob("*.tmp")), [])
 
 
 if __name__ == "__main__":

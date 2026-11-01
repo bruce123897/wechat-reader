@@ -58,7 +58,7 @@ class ArchiveTests(unittest.TestCase):
         self.a.ingest(batch([original]))
         self.a.ingest(batch([original], account="b"))
         event = msg(2, 101); event.update(kind="recall", text="已撤回", recalled=True, extra={"target_server_id": "99", "target_chat": "room"})
-        self.a.ingest(batch([event]))
+        self.assertEqual(self.a.ingest(batch([event]))["updated"], 1)
         self.assertTrue(self.a.message(1)["recalled"])
         self.assertEqual(self.a.message(1)["text"], original["text"])
         self.assertFalse(self.a.message(2)["recalled"])
@@ -71,6 +71,13 @@ class ArchiveTests(unittest.TestCase):
         latest = self.a.query(keyword="原文未采集")["messages"]
         self.assertEqual(len(latest), 1)
         self.assertTrue(latest[0]["recalled"])
+
+    def test_original_first_seen_with_recall_is_not_retained_as_captured(self):
+        original = msg(server_id="99")
+        event = msg(2, 101); event.update(kind="recall",text="已撤回",recalled=True,extra={"target_server_id":"99"})
+        self.a.ingest(batch([original, event]))
+        self.assertEqual(self.a.query(keyword=original["text"])["messages"], [])
+        self.assertFalse(any(m["text"] == original["text"] for m in self.a.new("a")["messages"]))
 
     def test_precise_user_id_wins_over_another_nickname(self):
         self.a.ingest(batch(contacts=[dict(user="u",nick="same"),dict(user="v",nick="u")]))

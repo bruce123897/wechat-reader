@@ -76,6 +76,16 @@ def sync_once(archive, source, *, full=False):
                     totals[key] += r[key]
                 totals["batches"] += 1
             archive.ingest(dict(account=source.account, source="__sync__", cursor=str(time.time())))
+            # Reconciliation after every pass also repairs a crash between the
+            # archive commit and the independent voice-queue registration.
+            try:
+                from .voice import VoiceQueue
+                queue = VoiceQueue(archive.path.with_name(archive.path.stem + ".voices.db"))
+                totals["voices_enqueued"] = queue.ensure_many(archive.voice_ids(source.account))
+                archive.ingest(dict(account=source.account, source="__voice_queue__", cursor=str(time.time())))
+            except Exception as exc:
+                archive.failure(source.account, "__voice_queue__", type(exc).__name__)
+                totals["voice_queue_error"] = type(exc).__name__
     except Exception as exc:
         archive.failure(source.account, "__sync__", type(exc).__name__)
         raise
@@ -103,12 +113,14 @@ def start_daemon(db_path, interval):
     log = (DATA / "daemon.log").open("ab")
     kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {"start_new_session": True}
     with log:
+        started = time.time()
         proc = subprocess.Popen([sys.executable, "-m", "wechat_reader", "--db", str(db_path), "daemon", "run", "--interval", str(interval)], cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=log, **kwargs)
-    for _ in range(30):
-        if proc.poll() is not None:
-            raise RuntimeError("daemon_start_failed_check_own_log")
-        if daemon_state().get("pid") == proc.pid and daemon_state().get("running"):
-            return {"started": True, "pid": proc.pid}
+    # Windows venv launchers may delegate to a second PID; the daemon's own
+    # fresh lock-protected state is authoritative, rather than the launcher PID.
+    for _ in range(100):
+        state = daemon_state()
+        if state.get("running") and state.get("heartbeat", 0) >= started:
+            return {"started": True, "pid": state["pid"]}
         time.sleep(.1)
     raise RuntimeError("daemon_start_timeout")
 
@@ -136,6 +148,7 @@ def run_daemon(db_path, interval):
                 state.update(heartbeat=time.time(), syncing=True)
                 write_json(DATA / "daemon.json", state)
                 try:
+                    cfg = config()
                     source = Source(Path(cfg["source"]), Path(cfg["key_file"]) if cfg.get("key_file") else None)
                     state["result"] = sync_once(archive, source)
                     state["error"] = None

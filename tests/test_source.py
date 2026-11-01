@@ -9,9 +9,11 @@ import sqlite3
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from wechat_reader.crypto import Cipher, MAGIC, PAGE, SourceIntegrityError, committed_wal, decrypt_database
 from wechat_reader.source import Source, SourceFormatError, capture, discover
+from wechat_reader.keys import KeyUnavailable
 
 
 DATA = Path(__file__).resolve().parents[1] / "data" / "test-source"
@@ -176,6 +178,37 @@ class AdapterTests(unittest.TestCase):
         with opened(self.message_path) as connection:
             connection.execute(f"DROP TABLE {self.table}")
         self.assertEqual(list(Source(self.root).scan())[-1]["messages"], [])
+
+    def test_matching_cursors_still_require_current_valid_key(self):
+        salt, material = bytes(range(16)), b"k" * 32
+        plain = MAGIC + b"\0" * (PAGE - len(MAGIC))
+        encrypted = encode_page(plain, 1, Cipher(material, salt), salt)
+        contact = self.storage / "contact/contact.db"
+        contact.write_bytes(encrypted)
+        source = Source(self.root, self.base / "nonexistent-key.bin")
+        cursors = {p.relative_to(self.storage).as_posix(): capture(p)[2] for p in source._paths()}
+        with patch("wechat_reader.source.database_key", return_value=material):
+            self.assertEqual(list(source.scan(cursors)), [])
+            self.assertEqual(source._key, material)
+        # No source files changed; a stale cached key must not make this pass.
+        with self.assertRaises(KeyUnavailable):
+            list(source.scan(cursors))
+        self.assertIsNone(source._key)
+        with patch("wechat_reader.source.database_key", return_value=b"z" * 32):
+            with self.assertRaises(SourceIntegrityError):
+                list(source.scan(cursors))
+        self.assertIsNone(source._key)
+
+    def test_validate_required_source_and_plaintext_header(self):
+        result = Source(self.root).validate()
+        self.assertEqual(result, {"ok": True, "databases": 3, "encrypted": False, "page_size": PAGE})
+        contact = self.storage / "contact/contact.db"
+        original = contact.read_bytes()
+        wrong_page_size = bytearray(original)
+        wrong_page_size[16:18] = (1024).to_bytes(2, "big")
+        contact.write_bytes(wrong_page_size)
+        with self.assertRaises(SourceIntegrityError):
+            Source(self.root).validate()
 
     def test_voice_missing_and_invalid_id(self):
         source = Source(self.root)

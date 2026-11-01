@@ -71,6 +71,17 @@ def main():
             report["context_count"] = len(archive.context(page["messages"][0]["id"])["messages"])
         report["sessions"] = len(archive.inbox(source.account))
         report["unread_sessions"] = len(archive.inbox(source.account, True))
+        room = archive.db.execute("SELECT room FROM members WHERE account=? ORDER BY room LIMIT 1", (source.account,)).fetchone()
+        report["group_members_returned"] = len(archive.members(source.account, room[0])) if room else 0
+        contact = archive.db.execute("SELECT user FROM contacts WHERE account=? ORDER BY user LIMIT 1", (source.account,)).fetchone()
+        report["contact_exact_lookup"] = bool(contact and archive.find(contact[0], source.account))
+        consumed = archive.new(source.account, reader="acceptance", limit=2, consume=True)
+        next_new = archive.new(source.account, reader="acceptance", limit=2)
+        report["new_cursor_advanced"] = not ({m["seq"] for m in consumed["messages"]} & {m["seq"] for m in next_new["messages"]})
+        if page["messages"]:
+            anchor = page["messages"][0]
+            exported = execute(cli_parser().parse_args(["export", "--account", source.account, "--chat", anchor["chat"], "--since", str(anchor["ts"]), "--until", str(anchor["ts"]+1), "--output", str(runtime.DATA / "exports/acceptance.json")]))
+            report["exported_messages"] = exported["exported"]
 
         class ControlledFailure:
             account = source.account
@@ -88,6 +99,7 @@ def main():
     report["source_files_sampled"] = len(before)
     report["source_files_unchanged"] = before == after
     runtime.write_json(runtime.DATA / "local-acceptance.json", report)
+    runtime.write_json(runtime.DATA / "acceptance" / ("sync-"+str(time.time_ns())+".json"), report)
     print(json.dumps(report, ensure_ascii=True, indent=2))
     if report["fault_doctor"]["ok"] or not report["recovered_doctor"]["ok"]:
         raise SystemExit(1)

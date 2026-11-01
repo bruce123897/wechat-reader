@@ -11,7 +11,7 @@ dependencies = []
 
 [project.optional-dependencies]
 wechat = ["cryptography==46.0.3", "zstandard==0.25.0"]
-voice = ["faster-whisper==1.2.1"]
+voice = ["faster-whisper==1.2.1", "av==16.1.0", "pilk==0.2.4"]
 
 [project.scripts]
 wechat-reader = "wechat_reader.cli:main"

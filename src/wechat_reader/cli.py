@@ -6,7 +6,9 @@ import csv
 import hashlib
 import io
 import json
+import os
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,7 +35,7 @@ def parser():
     imp = sub.add_parser("import", help="导入 JSON 批次（合成测试与真实源分开）")
     imp.add_argument("file", type=Path)
     sub.add_parser("status")
-    doctor = sub.add_parser("doctor"); doctor.add_argument("--max-age", type=int)
+    doctor = sub.add_parser("doctor"); doctor.add_argument("--max-age", type=int); doctor.add_argument("--source", action="store_true", help="额外验证当前源及密钥")
     for name in ("search", "read", "export"):
         q = sub.add_parser(name)
         if name == "search":
@@ -61,7 +63,7 @@ def parser():
     sync = sub.add_parser("sync"); sync.add_argument("--full", action="store_true", help="重读所有分片并重解析，仍幂等去重")
     daemon = sub.add_parser("daemon"); daemon.add_argument("action", choices=["start", "stop", "status", "run"]); daemon.add_argument("--interval", type=float, default=20)
     media = sub.add_parser("media"); media.add_argument("id", type=int); media.add_argument("--copy", action="store_true")
-    voice = sub.add_parser("voice"); voice.add_argument("action", choices=["enqueue", "run", "status", "retry"]); voice.add_argument("--id", type=int); voice.add_argument("--model", type=Path)
+    voice = sub.add_parser("voice"); voice.add_argument("action", choices=["enqueue", "run", "work", "status", "retry"]); voice.add_argument("--id", type=int); voice.add_argument("--model", type=Path); voice.add_argument("--limit", type=int, default=10)
     return p
 
 
@@ -172,6 +174,11 @@ def execute(args):
             return dict(archive.status(), daemon=runtime.daemon_state())
         if cmd == "doctor":
             result = archive.doctor(max_age=args.max_age)
+            if args.source:
+                try:
+                    result["source"] = source_from_config().validate()
+                except Exception as exc:
+                    result.update(ok=False, source_error=type(exc).__name__)
             daemon = runtime.daemon_state()
             if daemon.get("running") and daemon.get("error"):
                 result.update(ok=False, daemon_error=daemon["error"])
@@ -196,9 +203,27 @@ def media_voice(archive, args):
         return {"jobs": queue.status(), "job": queue.get(args.id) if args.id else None}
     if args.command == "voice" and args.action == "retry":
         return {"retried": queue.retry(args.id)}
-    if args.command == "voice" and args.action == "run":
+    if args.command == "voice" and args.action in ("run", "work"):
         transcriber = FasterWhisperTranscriber(args.model, cache_dir=runtime.DATA / "audio-cache")
-        return {"job": queue.run_once(transcriber)}
+        source = source_from_config()
+
+        def loader(message_id):
+            message = archive.message(int(message_id))
+            if message["account"] != source.account or message["kind"] != "voice" or message["recalled"]:
+                return None
+            return cache_voice(source, message)
+
+        if args.action == "run":
+            return {"job": queue.run_once(transcriber, media_loader=loader, message_id=args.id)}
+        if not 1 <= args.limit <= 10000:
+            raise ValueError("worker_limit_must_be_1_to_10000")
+        counts = {}
+        for _ in range(args.limit):
+            job = queue.run_once(transcriber, media_loader=loader)
+            if job is None:
+                break
+            counts[job["state"]] = counts.get(job["state"], 0)+1
+        return {"processed": sum(counts.values()), "states": counts}
     if args.id is None:
         raise ValueError("message_id_required")
     message = archive.message(args.id)
@@ -221,18 +246,37 @@ def media_voice(archive, args):
                 target.write_bytes(content)
                 result.update(path=str(target), detail="copied_to_own_cache")
         return result
-    if message["kind"] != "voice":
+    if message["kind"] != "voice" or message["recalled"]:
         raise ValueError("message_is_not_voice")
     result = resolver.resolve(message)
     path = result.get("path") if result["state"] == "available" else None
     if path is None and message["server_id"] not in ("", "0"):
-        audio = source_from_config().read_voice(message["server_id"], message["chat"])
-        if audio:
-            target = runtime.DATA / "voice-cache" / (hashlib.sha256(audio).hexdigest()+".silk")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(audio)
-            path = target
+        path = cache_voice(source_from_config(), message)
     return {"job": queue.enqueue(message["id"], path)}
+
+
+def cache_voice(source, message):
+    if message["server_id"] in ("", "0"):
+        return None
+    audio = source.read_voice(message["server_id"], message["chat"])
+    if not audio:
+        return None
+    target = runtime.DATA / "voice-cache" / (hashlib.sha256(audio).hexdigest()+".silk")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        with tmp.open("xb") as stream:
+            stream.write(audio)
+        try:
+            # Publish an immutable blob without replacing a file another worker
+            # may already be reading (Windows denies that replacement).
+            os.link(tmp, target)
+        except FileExistsError:
+            if hashlib.sha256(target.read_bytes()).hexdigest() != target.stem:
+                raise ValueError("voice_cache_content_mismatch")
+    finally:
+        tmp.unlink(missing_ok=True)
+    return target
 
 
 def main(argv=None):

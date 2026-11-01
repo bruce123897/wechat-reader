@@ -133,7 +133,7 @@ class Archive:
                     if target:
                         target_chat = m["extra"].get("target_chat") or m["chat"]
                         self.db.execute("INSERT OR IGNORE INTO recall_targets VALUES(?,?,?,?)", (account, target_chat, str(target), m["ts"]))
-                        self._recall_targets(account, target_chat, str(target), m["ts"], mid, initial_mark)
+                        result["updated"] += self._recall_targets(account, target_chat, str(target), m["ts"], mid, initial_mark)
                 for c in batch.get("contacts", []):
                     self.db.execute("INSERT OR REPLACE INTO contacts VALUES(?,?,?,?,?,?)", (account, str(c["user"]), c.get("remark", ""), c.get("nick", ""), c.get("alias", ""), c.get("kind", "other")))
                 # Explicit complete room list also clears rooms whose membership became empty.
@@ -174,6 +174,7 @@ class Archive:
             self.db.execute("UPDATE messages SET kind=?,text=?,extra=?,recalled=1,digest=? WHERE id=?", (m["kind"], m["text"], dumps(m["extra"]), digest, row["id"]))
             seq = self.db.execute("INSERT INTO versions(message_id,account,chat,ts,sender,kind,text,payload) VALUES(?,?,?,?,?,?,?,?)", (row["id"], account, chat, m["ts"], m["sender"], m["kind"], m["text"], dumps(dict(m, id=row["id"])))).lastrowid
             self.db.execute("UPDATE messages SET last_seq=? WHERE id=?", (seq, row["id"]))
+        return len(rows)
 
     @staticmethod
     def normalize(item, account, source):
@@ -293,6 +294,9 @@ class Archive:
 
     def cursors(self, account):
         return {r["source"]: r["cursor"] for r in self.db.execute("SELECT source,cursor FROM sync_state WHERE account=? AND error IS NULL AND source!='__sync__'", (account,))}
+
+    def voice_ids(self, account=None):
+        return [r[0] for r in self.db.execute("SELECT id FROM messages WHERE kind='voice' AND recalled=0 AND (? IS NULL OR account=?) ORDER BY id", (account, account))]
 
     def doctor(self, *, max_age=None):
         check = self.db.execute("PRAGMA quick_check").fetchone()[0]
