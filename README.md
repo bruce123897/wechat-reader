@@ -1,4 +1,4 @@
-当前定制包：[下载 WechatReader.zip](packages/WechatReader.zip)。维护者 Bruce，微信 bruce_jaychou。仓库保持私有。
+当前定制包：[下载 WechatReader.zip](packages/WechatReader.zip)，内含 Python 源码和安装脚本。维护者 Bruce，微信 bruce_jaychou。仓库保持私有。
 
 # WeChat for AI
 
