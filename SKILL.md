@@ -8,7 +8,7 @@ metadata:
 
 # WeChat for AI：让 AI Agent 读微信聊天记录（wx 命令）
 
-后台程序（计划任务 `wechat-reader-bruce-daemon`，开机自启）有新消息 3 秒内就同步进档案库，**查之前不用再 sync**。
+后台程序（计划任务 `wechat-reader-daemon`，开机自启）有新消息 3 秒内就同步进档案库，**查之前不用再 sync**。
 撤回的消息原文照样保留（显示为 `[已撤回] 原文`），语音在后台自动转成文字，朋友圈别人删了也留着。
 后台还会自动把新朋友圈的图片和视频下载、解密、存进本地缓存（朋友圈链接会过期，对方删帖后 CDN 也拿不到，先存下来才看得到）；
 不想自动存：`wx config sns_prefetch false`。单个媒体超过 `sns_media_max_mb`（默认 200MB）的视频只存缩略图。

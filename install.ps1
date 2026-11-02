@@ -17,7 +17,7 @@ $ErrorActionPreference = "Continue"
 $Contact = "bruce_jaychou"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $Here) { $Here = (Get-Location).Path }
-$Data = if ($env:WXKIT_HOME) { $env:WXKIT_HOME } else { Join-Path (Split-Path -Parent $Here) "data\customized" }
+$Data = if ($env:WXKIT_HOME) { $env:WXKIT_HOME } else { Join-Path $HOME ".wxdb" }
 $Venv = Join-Path $Data "venv"
 $Py = Join-Path $Venv "Scripts\python.exe"
 # 语音模型（GitHub release）；下载时按顺序试这些国内加速前缀，最后才直连 GitHub

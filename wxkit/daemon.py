@@ -263,7 +263,7 @@ class Daemon:
 
 
 # ---------- 开机自启（Windows 计划任务） ----------
-TASK = 'wechat-reader-bruce-daemon'
+TASK = 'wechat-reader-daemon'
 OLD_TASKS = ('wxkit-daemon',)
 
 
