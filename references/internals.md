@@ -21,7 +21,8 @@ wx 命令（cli.py）                          ← 只读档案库，不碰镜�
 | config.py | 数据目录、账号探测、配置文件 | 换路径、多账号 |
 | crypto.py | SQLCipher 4 页解密（AES-256-CBC + HMAC-SHA512，PBKDF2 256000 次） | 微信换加密参数 |
 | keys.py | 密钥保存（DPAPI 加密）、验证、从旧文件导入 | 密钥问题 |
-| keygrab.py | 重新获取密钥：从本机已有密钥文件导入、`--set` 手动给、图片异或值反推 | 换号/重装后取不到密钥 |
+| keygrab.py | 重新获取密钥：已有密钥导入、`--set` 手动给、图片异或值反推、图片 AES 交给 imgkey.py | 换号/重装后取不到密钥 |
+| imgkey.py | V2 图片 AES 密钥：只读扫描微信进程的 seed，按 wxid 派生并用账号图片验证；带时限 | 图片解不开 |
 | mirror.py | 增量镜像 | 同步慢/镜像损坏 |
 | contacts.py | 联系人、群成员与群昵称、标签（protobuf 字段） | 名字显示不对 |
 | parse.py | **一条原始消息 → kind + 一行文字 + extra**（所有消息格式都在这） | 新消息类型、显示不对 |
@@ -83,6 +84,8 @@ for r in db.msgs(chat=db.chat('张三'), since=..., kinds=['transfer']):
 - 同一笔转账两条消息（paysubtype 1 发起 / 3 收款 / 4 退还），transferid 相同
 - 转账方向：发起那条的发送者是付款方，收款那条的发送者是收款方。**收款那条里的 receiver_username 不是收款人**（常常是会话对方），不能拿来判断方向
 - 图片本地文件名藏在 packed_info_data 里的 32 位 hex；V2 图片 = AES-ECB 头 + 明文 + 异或尾，异或值可从 JPG 结尾 FF D9 反推
+- V2 图片 AES 密钥按 `md5(f'{seed}{wxid}').hexdigest()[:16]` 派生，XOR 为 `seed & 0xFF`。扫描候选按 XOR 优先验证，失败再试其余候选；只有同一账号图片样本都通过才保存。拒绝空样本和截断 AES 段；不向日志打印候选 seed 或密钥。
+- `python -B -m unittest discover -s tests -v` 执行隔离回归测试。图片、密钥文件均使用临时目录；进程读取用模拟接口，不扫描真实微信。
 - 消息按时间分片在 message_0.db、message_1.db…，(shard, chat, local_id) 唯一
 
 ## 移植到 Mac（还没做，改这几处即可）

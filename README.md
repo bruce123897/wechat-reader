@@ -1,10 +1,10 @@
-当前定制包：[下载 WechatReader.zip](packages/WechatReader.zip)，内含完整源码。维护者 Bruce，微信 bruce_jaychou。仓库保持私有。
+当前定制包：[下载 WechatReader.zip](packages/WechatReader.zip)，版本 2.3.1，内含完整源码与隔离测试。维护者 Bruce，微信 bruce_jaychou。仓库保持私有。
 
 # WeChat for AI
 
 **让 AI Agent 直接读电脑上的微信聊天记录。**
 
-维护者：Bruce ｜ 微信：bruce_jaychou ｜ 版本 2.3.0
+维护者：Bruce ｜ 微信：bruce_jaychou ｜ 版本 2.3.1
 
 装不上、用不了、想要新功能，或者想聊聊怎么让 AI 帮你处理微信和生意，都可以加我。转发请保留作者信息。
 
@@ -35,6 +35,18 @@ wx read 张三        读某人的聊天记录
 wx find 关键词      搜索聊天记录
 wx doctor           自检（看是否一切正常）
 ```
+
+## 聊天图片打不开时
+
+Windows 上保持微信登录目标账号，并在电脑版微信打开一张聊天图片，然后运行：
+
+```
+wx key --image
+```
+
+优先复用或导入已有图片密钥，没有时自动读取微信进程并用本机 V2 图片验证，验证通过后加密保存。该命令不重启微信，默认扫描时限 60 秒；需要更长时间时用 `wx key --image --timeout 120`。已有密钥失效时用 `wx key --image --force`，获取失败会保留原缓存并返回失败状态。
+
+此功能恢复了在用版本的自动获取路径，并补充了超时、完整样本检查和失败状态处理。当前验证使用隔离生成的图片和模拟进程读取；未对真实微信进程做新一轮实测。
 
 ## 如果网络不好
 

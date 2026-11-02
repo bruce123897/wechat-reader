@@ -789,7 +789,11 @@ def cmd_daemon(_db, a):
 def cmd_key(_db, a):
     from . import keygrab
     if a.image:
-        keygrab.image_key_interactive(config.account()); return
+        aes_ok, xor_ok = keygrab.image_key_interactive(
+            config.account(), timeout=a.timeout if a.timeout is not None else 60, force=a.force)
+        if not (aes_ok and xor_ok):
+            raise SystemExit(1)
+        return
     try:
         acct = config.account()
     except SystemExit:
@@ -922,7 +926,7 @@ def build():
     s.add_argument('--force', action='store_true', help='即使已有有效密钥也重新捕获一次')
     s.add_argument('--relaunch', action='store_true', help='先关微信再启动，强制走一次干净的登录捕获')
     s.add_argument('--no-launch', dest='no_launch', action='store_true', help='不自动启动微信（只挂钩已在运行的）')
-    s.add_argument('--timeout', type=int, help='自动捕获最多等多少秒（默认 180）')
+    s.add_argument('--timeout', type=int, help='自动捕获最多等多少秒（数据库默认 180，图片默认 60）')
     s.add_argument('--image', action='store_true', help='图片密钥')
     s.add_argument('--set', help='直接给出 64 位十六进制数据库密钥（会先验证）')
     s = add('config', cmd_config, '看/改配置：wx config [项] [值]', maxc=False); s.add_argument('k', nargs='?'); s.add_argument('v', nargs='?')

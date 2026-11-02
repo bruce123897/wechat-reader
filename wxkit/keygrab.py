@@ -10,7 +10,7 @@
   3. 自动：确保微信在运行（没运行就启动它），挂钩 + 轮询，直到登录完成捕获到密钥
   4. 内存扫描（备用，WeChat 4.x 上通常找不到）
   5. 手动：wx key --set <64位十六进制>
-图片 AES 密钥从已有配置导入；图片异或值从本机图片文件尾反推。
+图片 AES 密钥优先复用/导入，再从微信内存 seed 派生并验证；图片异或值从本机图片文件尾反推。
 """
 import sys
 import time
@@ -182,20 +182,49 @@ def db_key_interactive(acct, supplied=None, timeout=180, launch=True, relaunch=F
     return False
 
 
-def image_key_interactive(acct):
-    """图片密钥：AES 从已有配置导入，异或值从本机图片反推。返回 (有AES, 有异或)。"""
+def image_key_interactive(acct, timeout=60, force=False):
+    """图片密钥：优先复用，再导入或自动获取。只保存通过验证的扫描结果。"""
     from . import media
-    x = media.guess_xor(acct)
+    if timeout <= 0:
+        print('!! --timeout 必须大于 0 秒')
+        return False, False
+    try:
+        x = media.guess_xor(acct)
+    except OSError:
+        x = None
+        print('图片异或值：部分图片暂时不可读，将继续尝试获取密钥')
     if x is not None:
         keys.save(acct, img_xor=str(x))
         print(f'图片异或值：已从本机图片反推并保存（{x}）')
     else:
         print('图片异或值：本机暂时没有可用的图片来反推，等电脑版微信收到图片后再 wx key --image')
-    if keys.load(acct).get('img_aes'):
+    ready = False
+    if keys.load(acct).get('img_aes') and not force:
         print('图片 AES 密钥：已有')
-    elif keys.import_any(acct) and keys.load(acct).get('img_aes'):
-        print('图片 AES 密钥：已从本机已有配置导入')
-    else:
-        print('图片 AES 密钥：本机暂时取不到；没有它时老格式图片仍可解，V2 新图暂时解不开')
+        ready = True
+    elif not force:
+        try:
+            keys.import_any(acct)
+        except (OSError, ValueError, SystemExit):
+            # 没有数据库样本也允许独立获取图片密钥。
+            pass
+        ready = bool(keys.load(acct).get('img_aes'))
+        if ready:
+            print('图片 AES 密钥：已从本机已有配置导入')
+    if not ready:
+        print('图片 AES 密钥：正在从微信内存获取并验证…')
+        try:
+            from . import imgkey
+            hint = x if x is not None else keys.load(acct).get('img_xor')
+            hit = imgkey.solve(acct, xor_hint=hint, on_status=lambda message: print('  ' + message), timeout=timeout)
+            if hit:
+                key, _seed, xor = hit
+                keys.save(acct, img_aes=key.decode('ascii'), img_xor=str(xor))
+                ready = True
+                print('图片 AES 密钥：已自动获取、通过图片验证并加密保存')
+            else:
+                print('图片 AES 密钥：本次获取未成功；老格式图片仍可使用')
+        except Exception as exc:
+            print(f'图片 AES 密钥：获取未完成（{type(exc).__name__}），请检查微信状态后重试')
     d = keys.load(acct)
-    return bool(d.get('img_aes')), d.get('img_xor') is not None
+    return ready, d.get('img_xor') is not None

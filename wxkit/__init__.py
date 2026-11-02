@@ -11,13 +11,14 @@
   ingest    镜像 → 档案库的增量入库
   voice     语音转文字（后台子进程）
   media     图片 / 视频 / 文件定位与解密
+  imgkey    V2 图片密钥自动获取与样本验证
   timeutil  时间解析与格式化（北京时间）
   render    紧凑输出与输出上限
   query     给命令和脚本用的查询接口
   daemon    后台常驻循环
   cli       wx 命令入口
 """
-__version__ = '2.3.0'
+__version__ = '2.3.1'
 __author__ = 'Bruce'
 
 NAME = 'WeChat for AI'

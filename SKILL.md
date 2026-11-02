@@ -3,7 +3,7 @@ name: wechat-reader
 description: 读本机电脑版微信 4.x 的聊天记录（后台实时同步，防撤回），任何要查微信聊天、新消息、联系人/备注/群成员、转账红包、语音转文字、图片视频文件、朋友圈、收藏的任务都先用它。只读，不能发消息。
 metadata:
   author: Bruce，微信 bruce_jaychou
-  version: 2.3.0
+  version: 2.3.1
 ---
 
 # WeChat for AI：让 AI Agent 读微信聊天记录（wx 命令）
@@ -69,4 +69,5 @@ metadata:
 ## 出问题时
 `wx status` 看后台、档案库、语音进度、密钥；`wx doctor` 全面自检并给出处理办法。
 常见：后台没跑 → `wx daemon start`；微信重装/换号后密钥失效 → `wx key`；更多见 references/troubleshooting.md。
+V2 聊天图片没有密钥 → `wx key --image`，默认最多扫描 60 秒；可用 `--timeout 120` 延长。确认缓存图片密钥失效时用 `wx key --image --force` 重新获取。只在 Windows 上自动读取微信进程；获取失败命令返回非零状态，不把候选密钥或 seed 打印给用户。
 代码结构与改法：references/internals.md（每个模块一个文件，改哪块看哪块）。
