@@ -1,6 +1,6 @@
 # 当前交付
 
-维护者：Bruce；微信：bruce_jaychou。仓库保持私有。
+维护者：Bruce；微信：bruce_jaychou。仓库已公开，可直接浏览和下载。
 
 ## Wechat Reader 2.3.1（2026-11-02）
 
