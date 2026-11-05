@@ -8,6 +8,14 @@ metadata:
 
 # WeChat for AI：让 AI Agent 读微信聊天记录（wx 命令）
 
+## 在不同 AI 工具中使用
+
+本技能通过本机 `wx` 命令工作，可供 DeepSeek Harness（DSH）、Qwen Code、Kimi Code、Codex、Claude Code、Cursor、Gemini CLI、GitHub Copilot 等具备本地文件和终端能力的 Agent 使用。模型品牌不决定 Skill 安装目录，安装与发现方式见 [多客户端接入说明](references/ai-clients.md)。
+
+开始使用时，确认当前终端位于装有微信和 `wx` 的 Windows 电脑；远程/云端会话不能直接调用用户电脑上的命令。找不到 `wx` 时先定位已有安装并检查当前终端 PATH，不要把缺少命令解释成没有聊天记录。按需使用当前客户端提供的本地图片查看工具打开媒体路径，工具名称不必叫 Read。
+
+## 运行与同步
+
 后台程序（计划任务 `wechat-reader-daemon`，开机自启）有新消息 3 秒内就同步进档案库，**查之前不用再 sync**。
 撤回的消息原文照样保留（显示为 `[已撤回] 原文`），语音在后台自动转成文字，朋友圈别人删了也留着。
 后台还会自动把新朋友圈的图片和视频下载、解密、存进本地缓存（朋友圈链接会过期，对方删帖后 CDN 也拿不到，先存下来才看得到）；
@@ -25,11 +33,11 @@ metadata:
 | 全文搜 | `wx search 词 [天数=30]`（多个词空格=都要有；`re:正则`；`--in 某人[,某人]` `--from 我`；默认每条命中带前后各 2 条上下文（`--ctx N` 改数量，`--ctx 0` 只看命中行），`»` 标命中行） |
 | 转账/红包 | `wx pay [天数=3]`（按单号去重，每个会话一行：净额 + 每笔 ←收 →付；`--who 某人`；`--list` 逐笔时间线；`--ids` 带单号尾号；`--amount 2400` 按金额找） |
 | 撤回、加好友、进退群等 | `wx events [天数=1]`；只看撤回原文 `wx recalls [天数=7]` |
-| 聊天图片/视频/文件 | `wx media [名字] [-n 5] [--kind image,video,file] [--since]`（不写名字 = 所有会话） → 本地路径，图片用 Read 看 |
+| 聊天图片/视频/文件 | `wx media [名字] [-n 5] [--kind image,video,file] [--since]`（不写名字 = 所有会话） → 本地路径，图片用本地图片查看工具打开 |
 | 看被截断的长消息 | 输出里的 `#编号` → `wx msg 编号` |
 | 群成员 / 某人在哪些群 / 标签 / 统计 | `wx members 群 [词]` / `wx groups 某人` / `wx labels [标签]` / `wx stats [名字] [--days 30]` |
 | 朋友圈文字 / 收藏 | `wx sns [名字] [-n 10] [-q 词]`（每条带 `tid`，已缓存图/视频直接列本地路径）/ `wx fav [词]` |
-| 朋友圈图片/视频 | `wx sns-media [名字\|tid:<负号 tid>] [-n] [--kind image,video] [--thumb] [--since]` → 本地路径，自动解密，图直接 Read 看；密钥全自动。回填：`wx sns-media --backfill --since 60d` |
+| 朋友圈图片/视频 | `wx sns-media [名字\|tid:<负号 tid>] [-n] [--kind image,video] [--thumb] [--since]` → 本地路径，自动解密，图用本地图片查看工具打开；密钥全自动。回填：`wx sns-media --backfill --since 60d` |
 | 导出给人看 | `wx export 名字 --format md|txt|json|csv|html [--since]`（只打印文件路径，不刷屏） |
 | 命令覆盖不到的 | `wx sql "select …"`（只读；表结构见 references/internals.md） |
 
